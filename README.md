@@ -87,7 +87,7 @@ Diagnostics go to stdout and klog, the same way elfldr logs.
 | `pt_close`, `pt_dup2`, `pt_rdup` | File descriptor syscalls inside the target |
 | `pt_socket`, `pt_setsockopt`, `pt_bind`, `pt_recvmsg` | Socket syscalls inside the target |
 | `pt_dynlib_get_proc_param`, `pt_dynlib_process_needed_and_relocate` | Console dynamic linker syscalls inside the target |
-| `pt_resolve` | Find an exported function of the target's libkernel by name; returns `0` when it is not found |
+| `pt_resolve` | Find an exported function of the target's libkernel by name or by NID; returns `0` when it is not found |
 | `pt_call` | Call a function on the stopped thread with up to six integer arguments and fetch `rax` |
 | `pt_pipe`, `pt_errno`, `pt_sceKernelGetProcParam` | Helpers that call into the target's libkernel |
 
@@ -97,14 +97,13 @@ const uint64_t args[6] = {0};
 intptr_t result;
 
 if (function && !pt_call(pid, function, args, &result))
-  printf("target pid is %ld
-", (long)result);
+  printf("target pid is %ld\n", (long)result);
 ```
 
 ## Notes
 - Both consoles need a payload that is allowed to use `ptrace`. On the PS5 the library raises the caller's authority id around each request and puts it back afterwards; requests are serialised with a lock so threads do not undo each other's change.
 - `pt_call` runs the function on a stack of its own choosing, restores the thread's registers afterwards, and waits about ten seconds before it stops the process and gives up. On the PS4 it maps and frees its own scratch region; if a call times out that region is left behind because the function may still be running on it.
-- `pt_resolve` takes names on both consoles; the PS5 turns the name into its NID first.
+- `pt_resolve` takes a symbol name or an eleven-character NID on both consoles, so code written against upstream's NID-based `pt_resolve` works unchanged. A string that looks like an NID is tried as one first and then as a name; on the PS5 a name is turned into its NID before the lookup.
 - A call that fails halfway restores the thread's registers where it can. Check the return value, and detach either way.
 
 ## Credits

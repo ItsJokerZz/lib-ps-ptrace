@@ -383,8 +383,25 @@ pt_dynlib_process_needed_and_relocate(pid_t pid) {
   return (int)pt_syscall3(pid, 0x257, 0, 0, 0);
 }
 
+static int
+pt_is_nid(const char *text) {
+  size_t length = 0;
+
+  for(; text[length]; ++length) {
+    char c = text[length];
+
+    if(!((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')
+         || (c >= '0' && c <= '9') || c == '+' || c == '-')) {
+      return 0;
+    }
+  }
+
+  return length == 11;
+}
+
 static intptr_t
-pt_dlsym(pid_t pid, const char *symbol) {
+pt_dlfind(pid_t pid, const char *name,
+          intptr_t (*find)(pid_t, uint32_t, const char *)) {
   static const char *const modules[]
       = { "libkernel.sprx", "libkernel_sys.sprx", "libkernel_web.sprx",
           "libSceLibcInternal.sprx" };
@@ -396,7 +413,7 @@ pt_dlsym(pid_t pid, const char *symbol) {
       continue;
     }
 
-    intptr_t address = kernel_dynlib_dlsym(pid, handle, symbol);
+    intptr_t address = find(pid, handle, name);
 
     if(address > 0) {
       return address;
@@ -404,6 +421,11 @@ pt_dlsym(pid_t pid, const char *symbol) {
   }
 
   return 0;
+}
+
+static intptr_t
+pt_dlsym(pid_t pid, const char *symbol) {
+  return pt_dlfind(pid, symbol, kernel_dynlib_dlsym);
 }
 
 #ifdef __ORBIS__
@@ -754,6 +776,13 @@ restore:
 
 intptr_t
 pt_resolve(pid_t pid, const char *symbol) {
+  intptr_t address;
+
+  if(pt_is_nid(symbol)
+     && (address = pt_dlfind(pid, symbol, kernel_dynlib_resolve))) {
+    return address;
+  }
+
   return pt_dlsym(pid, symbol);
 }
 
@@ -852,6 +881,10 @@ intptr_t
 pt_resolve(pid_t pid, const char *symbol) {
   char nid[12] = { 0 };
   intptr_t addr;
+
+  if(pt_is_nid(symbol) && (addr = resolve_nid(pid, symbol))) {
+    return addr;
+  }
 
   nid_encode(symbol, nid);
 
