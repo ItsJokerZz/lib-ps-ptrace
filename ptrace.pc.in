@@ -1,0 +1,9 @@
+prefix=@PREFIX@
+libdir=${prefix}/lib
+includedir=${prefix}/include
+
+Name: ptrace
+Description: ptrace library for the PS4 and PS5 payload SDKs
+Version: @VERSION@
+Libs: -L${libdir} -lptrace -lkernel_sys
+Cflags: -I${includedir}
