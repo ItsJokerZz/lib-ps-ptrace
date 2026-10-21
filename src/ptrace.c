@@ -100,6 +100,25 @@ pt_wait(pid_t pid, int *status, int options) {
   return waited;
 }
 
+static int
+pt_wait_stopped(pid_t pid, unsigned timeout_ms) {
+  for(unsigned waited = 0; waited < timeout_ms; waited += 10) {
+    int status = 0;
+    pid_t result = pt_wait(pid, &status, WNOHANG);
+
+    if(result == pid) {
+      return WIFSTOPPED(status) ? 1 : -1;
+    }
+    if(result < 0 && errno != EINTR) {
+      return -1;
+    }
+
+    usleep(10000);
+  }
+
+  return 0;
+}
+
 int
 pt_attach(pid_t pid) {
   if(sys_ptrace(PT_ATTACH, pid, 0, 0) == -1) {
@@ -185,6 +204,59 @@ pt_continue(pid_t pid, int sig) {
   }
 
   return 0;
+}
+
+static int pt_make_writable(pid_t pid, intptr_t addr);
+
+int
+pt_breakat(pid_t pid, intptr_t brkpoint) {
+  uint8_t int3 = 0xcc;
+  uint8_t original;
+  int stopped;
+  int error;
+
+  if(pt_make_writable(pid, brkpoint)) {
+    return -1;
+  }
+  if(pt_copyout(pid, brkpoint, &original, sizeof(original))) {
+    return -1;
+  }
+  if(pt_copyin(pid, &int3, brkpoint, sizeof(int3))) {
+    return -1;
+  }
+
+  if(pt_continue(pid, SIGCONT)) {
+    goto fail;
+  }
+
+  stopped = pt_wait_stopped(pid, 30000);
+
+  if(stopped == 0) {
+    LOG_PUTS("[Ptrace] Breakpoint not reached; requesting stop before "
+             "removing it");
+    kill(pid, SIGSTOP);
+
+    if(!pt_wait_stopped(pid, 2000)) {
+      errno = ETIMEDOUT;
+      return -1;
+    }
+
+    errno = ETIMEDOUT;
+    goto fail;
+  }
+  if(stopped < 0) {
+    errno = ESRCH;
+    goto fail;
+  }
+
+  return pt_copyin(pid, &original, brkpoint, sizeof(original)) ? -1 : 0;
+
+fail:
+  error = errno;
+  pt_copyin(pid, &original, brkpoint, sizeof(original));
+  errno = error;
+
+  return -1;
 }
 
 int
@@ -429,6 +501,14 @@ pt_dlsym(pid_t pid, const char *symbol) {
 }
 
 #ifdef __ORBIS__
+
+static int
+pt_make_writable(pid_t pid, intptr_t addr) {
+  (void)pid;
+  (void)addr;
+
+  return 0;
+}
 
 struct ps4_fpregs {
   unsigned char legacy[512];
@@ -866,6 +946,12 @@ pt_sceKernelGetProcParam(pid_t pid) {
 
 #ifdef __PROSPERO__
 
+static int
+pt_make_writable(pid_t pid, intptr_t addr) {
+  return kernel_mprotect(pid, addr, PAGE_SIZE,
+                         PROT_READ | PROT_WRITE | PROT_EXEC);
+}
+
 static intptr_t
 resolve_nid(pid_t pid, const char *nid) {
   intptr_t addr;
@@ -974,25 +1060,6 @@ pt_call_single_step(pid_t pid, intptr_t addr, ...) {
   va_end(ap);
 
   return pt_run_stepped(pid, &bak_reg, &jmp_reg);
-}
-
-static int
-pt_wait_stopped(pid_t pid, unsigned timeout_ms) {
-  for(unsigned waited = 0; waited < timeout_ms; waited += 10) {
-    int status = 0;
-    pid_t result = pt_wait(pid, &status, WNOHANG);
-
-    if(result == pid) {
-      return WIFSTOPPED(status) ? 1 : -1;
-    }
-    if(result < 0 && errno != EINTR) {
-      return -1;
-    }
-
-    usleep(10000);
-  }
-
-  return 0;
 }
 
 int

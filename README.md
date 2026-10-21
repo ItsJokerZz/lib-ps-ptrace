@@ -78,6 +78,7 @@ Diagnostics go to stdout and klog, the same way elfldr logs.
 | --- | --- |
 | `pt_attach`, `pt_detach` | Attach and wait for the stop (about five seconds at most), or detach and resume |
 | `pt_step`, `pt_continue` | Single-step or resume the stopped process |
+| `pt_breakat` | Resume the stopped process until it reaches an address, then put the original byte back and leave it stopped there |
 | `pt_getregs`, `pt_setregs` | Read or write the registers of the stopped thread |
 | `pt_copyin`, `pt_copyout` | Write to or read from the target's memory |
 | `pt_read_memory`, `pt_write_memory` | The same, attaching and detaching around the copy |
@@ -104,6 +105,7 @@ if (function && !pt_call(pid, function, args, &result))
 - Both consoles need a payload that is allowed to use `ptrace`. On the PS5 the library raises the caller's authority id around each request and puts it back afterwards; requests are serialised with a lock so threads do not undo each other's change.
 - `pt_call` runs the function on a stack of its own choosing, restores the thread's registers afterwards, and waits about ten seconds before it stops the process and gives up. On the PS4 it maps and frees its own scratch region; if a call times out that region is left behind because the function may still be running on it.
 - `pt_resolve` takes a symbol name or an eleven-character NID on both consoles, so code written against upstream's NID-based `pt_resolve` works unchanged. A string that looks like an NID is tried as one first and then as a name; on the PS5 a name is turned into its NID before the lookup.
+- `pt_breakat` plants a breakpoint at the address, resumes the process and waits about thirty seconds for it to stop. It returns `-1` with `ESRCH` if the process ended instead, or `ETIMEDOUT` if it never got there; the original byte is put back in both cases. On the PS5 the page has to be made writable through the kernel first, on the PS4 a ptrace write goes through as it is.
 - A call that fails halfway restores the thread's registers where it can. Check the return value, and detach either way.
 
 ## Credits
