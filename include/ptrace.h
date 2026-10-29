@@ -26,6 +26,10 @@ along with this program; see the file COPYING. If not, see
 extern "C" {
 #endif
 
+#ifdef __ORBIS__
+int patch_ps4_ptrace(void);
+#endif
+
 int pt_attach(pid_t pid);
 int pt_detach(pid_t pid, int sig);
 int pt_step(pid_t pid);

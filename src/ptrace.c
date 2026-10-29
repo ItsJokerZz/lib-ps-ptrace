@@ -47,6 +47,140 @@ along with this program; see the file COPYING. If not, see
   (WIFSTOPPED(status) && WSTOPSIG(status) == SIGTRAP)
 #define PT_SCRATCH_SIZE 0x20000
 
+static int ps4_ptrace_is_patched = 0;
+
+int
+patch_ps4_ptrace(void) {
+  unsigned int fw = kernel_get_fw_version();
+  unsigned long pt_patch = 0;
+  unsigned short pt_patch_size = 6;
+  static const unsigned char nops[6] = {
+    0x90, 0x90, 0x90, 0x90, 0x90, 0x90
+  };
+
+  if(ps4_ptrace_is_patched) {
+    return 0;
+  }
+
+  switch(fw & 0xffff0000) {
+    case 0x3500000:
+    case 0x3550000:
+    case 0x3700000:
+      if((pt_patch = kernel_find_pattern(
+              KERNEL_ADDRESS_IMAGE_BASE, KERNEL_IMAGE_SIZE,
+              "48b8810ef000000400004c0fa3c07326"
+              "????????????????????????????????????????????????????????????????"
+              "41bf0100000085db7469"))) {
+        pt_patch += 56;
+        pt_patch_size = 2;
+      }
+      break;
+    case 0x4000000:
+    case 0x4010000:
+    case 0x4050000:
+    case 0x4060000:
+    case 0x4070000:
+    case 0x4500000:
+    case 0x4550000:
+    case 0x4700000:
+    case 0x4710000:
+    case 0x4720000:
+    case 0x4730000:
+    case 0x4740000:
+      if((pt_patch = kernel_find_pattern(
+              KERNEL_ADDRESS_IMAGE_BASE, KERNEL_IMAGE_SIZE,
+              "48b8361000007e020000???????????????????????????????????????????"
+              "???????????????????????0f84????????"))) {
+        pt_patch += 43;
+      }
+      break;
+    case 0x5000000:
+    case 0x5010000:
+    case 0x5030000:
+    case 0x5050000:
+    case 0x5070000:
+    case 0x5500000:
+    case 0x5530000:
+    case 0x5550000:
+    case 0x5560000:
+    case 0x6000000:
+    case 0x6020000:
+    case 0x6200000:
+    case 0x6500000:
+    case 0x6510000:
+    case 0x6700000:
+    case 0x6710000:
+    case 0x6720000:
+      if((pt_patch = kernel_find_pattern(
+              KERNEL_ADDRESS_IMAGE_BASE, KERNEL_IMAGE_SIZE,
+              "48b8361000007e020000??????????????????????????"
+              "0f84????????"))) {
+        pt_patch += 23;
+      }
+      break;
+    case 0x7000000:
+    case 0x7010000:
+    case 0x7020000:
+    case 0x7500000:
+    case 0x7510000:
+    case 0x7550000:
+    case 0x8000000:
+    case 0x8010000:
+    case 0x8020000:
+    case 0x8030000:
+    case 0x8500000:
+    case 0x8520000:
+    case 0x9000000:
+    case 0x9030000:
+    case 0x9040000:
+    case 0x9500000:
+    case 0x9510000:
+    case 0x9600000:
+    case 0x10000000:
+    case 0x10010000:
+    case 0x10500000:
+    case 0x10700000:
+    case 0x10710000:
+    case 0x11000000:
+    case 0x11020000:
+    case 0x11500000:
+    case 0x11520000:
+    case 0x12000000:
+    case 0x12020000:
+    case 0x12500000:
+    case 0x12520000:
+    case 0x13000000:
+    case 0x13020000:
+    case 0x13040000:
+    case 0x13500000:
+    case 0x13520000:
+    case 0x14000000:
+      if((pt_patch = kernel_find_pattern(
+              KERNEL_ADDRESS_IMAGE_BASE, KERNEL_IMAGE_SIZE,
+              "48b8361000007e020000????????????????????????"
+              "0f84190200004c8b"))) {
+        pt_patch += 22;
+      }
+      break;
+
+    default:
+      LOG_PRINTF("Unsupported firmware (0x%x)\n", fw);
+      errno = ENOSYS;
+      return -1;
+  }
+
+  if(pt_patch) {
+    LOG_PRINTF("Patching kernel at 0x%lx (ptrace)\n", pt_patch);
+    if(kernel_patch(pt_patch, 0, nops, pt_patch_size)) {
+      LOG_PERROR("kernel_patch (ptrace)");
+      return -1;
+    }
+  }
+
+  ps4_ptrace_is_patched = 1;
+  return 0;
+}
+
 static int
 sys_ptrace(int request, pid_t pid, caddr_t addr, int data) {
   return ptrace(request, pid, addr, data);
@@ -121,6 +255,11 @@ pt_wait_stopped(pid_t pid, unsigned timeout_ms) {
 
 int
 pt_attach(pid_t pid) {
+#ifdef __ORBIS__
+  if(patch_ps4_ptrace()) {
+    return -1;
+  }
+#endif
   if(sys_ptrace(PT_ATTACH, pid, 0, 0) == -1) {
     return -1;
   }
