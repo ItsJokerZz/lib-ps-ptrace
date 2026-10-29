@@ -835,8 +835,6 @@ pt_syscall(pid_t pid, int sysno, ...) {
   }
   if(sysc_reg.r_rflags & 1) {
     errno = (int)sysc_reg.r_rax;
-    LOG_PRINTF("[Ptrace] Remote syscall %d at %#lx returned errno=%d (%s)\n",
-               sysno, (unsigned long)bak_reg.r_rip, errno, strerror(errno));
     return -1;
   }
 
