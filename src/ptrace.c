@@ -255,11 +255,6 @@ pt_wait_stopped(pid_t pid, unsigned timeout_ms) {
 
 int
 pt_attach(pid_t pid) {
-#ifdef __ORBIS__
-  if(patch_ps4_ptrace()) {
-    return -1;
-  }
-#endif
   if(sys_ptrace(PT_ATTACH, pid, 0, 0) == -1) {
     return -1;
   }
