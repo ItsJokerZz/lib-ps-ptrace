@@ -702,7 +702,7 @@ pt_syscall(pid_t pid, int sysno, ...) {
   struct reg bak_reg;
   va_list ap;
 
-  if(ptrace(PT_LWPINFO, pid, (caddr_t)&origin, sizeof(origin))
+  if(sys_ptrace(PT_LWPINFO, pid, (caddr_t)&origin, sizeof(origin))
      || origin.pl_lwpid <= 0) {
     return -1;
   }
@@ -741,7 +741,7 @@ pt_syscall(pid_t pid, int sysno, ...) {
   int failed = -1;
 
   for(int attempt = 0; attempt < 16; ++attempt) {
-    if(ptrace(PT_STEP, tid, (caddr_t)1, 0)) {
+    if(sys_ptrace(PT_STEP, tid, (caddr_t)1, 0)) {
       break;
     }
 
@@ -754,7 +754,7 @@ pt_syscall(pid_t pid, int sysno, ...) {
 
     struct ptrace_lwpinfo event = { 0 };
 
-    if(ptrace(PT_LWPINFO, pid, (caddr_t)&event, sizeof(event))
+    if(sys_ptrace(PT_LWPINFO, pid, (caddr_t)&event, sizeof(event))
        || pt_getregs(tid, &sysc_reg)) {
       break;
     }
@@ -850,7 +850,7 @@ pt_call_on(pid_t pid, intptr_t function, intptr_t scratch, size_t scratch_size,
   uint8_t trap = 0xcc;
   int failed = 1, stopped = 1;
 
-  if(ptrace(PT_LWPINFO, pid, (caddr_t)&origin, sizeof(origin))
+  if(sys_ptrace(PT_LWPINFO, pid, (caddr_t)&origin, sizeof(origin))
      || origin.pl_lwpid <= 0) {
     LOG_PERROR("call: cannot identify stopped LWP");
     return -1;
@@ -858,7 +858,8 @@ pt_call_on(pid_t pid, intptr_t function, intptr_t scratch, size_t scratch_size,
 
   pid_t tid = origin.pl_lwpid;
 
-  if(pt_getregs(tid, &saved) || ptrace(PT_GETFPREGS, tid, (caddr_t)&fp, 0)) {
+  if(pt_getregs(tid, &saved)
+     || sys_ptrace(PT_GETFPREGS, tid, (caddr_t)&fp, 0)) {
     LOG_PERROR("call: save LWP registers");
     return -1;
   }
@@ -911,7 +912,7 @@ pt_call_on(pid_t pid, intptr_t function, intptr_t scratch, size_t scratch_size,
 
     struct ptrace_lwpinfo event = { 0 };
 
-    if(ptrace(PT_LWPINFO, pid, (caddr_t)&event, sizeof(event))) {
+    if(sys_ptrace(PT_LWPINFO, pid, (caddr_t)&event, sizeof(event))) {
       break;
     }
 
@@ -974,7 +975,7 @@ restore:
   LOG_PRINTF("[Ptrace] Restoring original LWP=%d; completed=%d\n", (int)tid,
              !failed);
 
-  if(ptrace(PT_SETFPREGS, tid, (caddr_t)&fp, 0)) {
+  if(sys_ptrace(PT_SETFPREGS, tid, (caddr_t)&fp, 0)) {
     LOG_PERROR("call: restore FP registers");
     failed = 1;
   }
